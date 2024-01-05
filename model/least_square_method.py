@@ -28,7 +28,7 @@ class PolynomialOrder10:
     def __geometric(cls, morder: int, x: float) -> float:
         if morder == 0:
             return 1.0
-        return pow(x, morder)
+        return np.float_power(x, morder)
 
     @classmethod
     def __laguerre(cls, morder: int, x: float) -> float:
@@ -296,7 +296,7 @@ class PolynomialOrder10:
             raise ValueError('# error: basis type is wrong.')
 
 
-class NPLeastSquare:
+class NPLeastSquareSimple:
     _epsilon = 1.0e-128
 
     def __init__(self) -> None:
@@ -380,6 +380,87 @@ class NPLeastSquare:
         assert avec0.shape[1] == 1, 'avec0.shape[1] == 1 is required'
         return sum([avec0[p, 0]*PolynomialOrder10.func(basis, p, x) for p in range(morder)])
 
+    @classmethod
+    def __make_design_matrix(cls, dict_design_array_t: dict[int, list[float]]) -> np.ndarray:
+        design_matrix_t = np.array([dict_design_array_t[i] for i in dict_design_array_t.keys()])
+        design_matrix = design_matrix_t.T
+        return design_matrix
+
+    @classmethod
+    def design_matrix_quadratic_model_2vars(cls, x1s: list[float], x2s: list[float]) -> np.ndarray:
+        """ design matrix of a quadratic model in two variables
+        design matrix: X = [1, x1, x2, x1^2, x2^2, x1.x2]
+        """
+        assert len(x1s) == len(x2s), 'len(x1s) == len(x2s) is required'
+        dict_design_array_t = {
+            0: [1.0 for _ in x1s],
+            1: x1s[:],
+            2: x2s[:],
+            3: [x1*x1 for x1 in x1s],
+            4: [x2*x2 for x2 in x2s],
+            5: [x1*x2 for x1, x2 in zip(x1s, x2s)],
+        }
+        return cls.__make_design_matrix(dict_design_array_t)
+
+    @classmethod
+    def design_matrix_cubic_model_2vars(cls, x1s: list[float], x2s: list[float]) -> np.ndarray:
+        """ design matrix of a cubic model in two variables
+        design matrix: X = [1, x1, x2, x1^2, x2^2, x1.x2, x1.x2^2, x1^2.x2]
+        """
+        assert len(x1s) == len(x2s), 'len(x1s) == len(x2s) is required'
+        dict_design_array_t = {
+            0: [1.0 for _ in x1s],
+            1: x1s[:],
+            2: x2s[:],
+            3: [x1*x1 for x1 in x1s],
+            4: [x2*x2 for x2 in x2s],
+            5: [x1*x2 for x1, x2 in zip(x1s, x2s)],
+            6: [x1*x2*x2 for x1, x2 in zip(x1s, x2s)],
+            7: [x1*x1*x2 for x1, x2 in zip(x1s, x2s)],
+        }
+        return cls.__make_design_matrix(dict_design_array_t)
+
+    @classmethod
+    def design_matrix_cubic_general_model_2vars(cls, basis: BasisType, x1s: list[float], x2s: list[float]) -> np.ndarray:
+        """ design matrix of a cubic model in two variables
+        design matrix: X = [1, x1, x2, x1^2, x2^2, x1.x2, x1.x2^2, x1^2.x2]
+        """
+        assert len(x1s) == len(x2s), 'len(x1s) == len(x2s) is required'
+        n1, n2 = 1, 2
+        if BasisType.Laguerre == basis:
+            n1, n2 = 0, 1
+        dict_design_array_t = {
+            0: [1.0 for _ in x1s],
+            1: [PolynomialOrder10.func(basis, n1, x1) for x1 in x1s],
+            2: [PolynomialOrder10.func(basis, n1, x2) for x2 in x2s],
+            3: [PolynomialOrder10.func(basis, n2, x1) for x1 in x1s],
+            4: [PolynomialOrder10.func(basis, n2, x2) for x2 in x2s],
+            5: [PolynomialOrder10.func(basis, n1, x1)*PolynomialOrder10.func(basis, n1, x2) for x1, x2 in zip(x1s, x2s)],
+            6: [PolynomialOrder10.func(basis, n1, x1)*PolynomialOrder10.func(basis, n2, x2) for x1, x2 in zip(x1s, x2s)],
+            7: [PolynomialOrder10.func(basis, n2, x1)*PolynomialOrder10.func(basis, n1, x2) for x1, x2 in zip(x1s, x2s)],
+        }
+        return cls.__make_design_matrix(dict_design_array_t)
+
+    @classmethod
+    def beta_coefficients(cls, design_matrix: np.ndarray, ys_vec: np.ndarray) -> np.ndarray:
+        """ y := beta0 + beta1.x1 + beta2.x2 + beta3.x3 + beta4.x4 + beta5.x5 + epsilon
+        beta = [beta0, beta1, beta2, beta3, beta4, beta5]
+        beta_hat = (X^t.X)^-1.X^t.y
+        """
+        XtX = design_matrix.T @ design_matrix
+        XtY = design_matrix.T @ ys_vec
+        detXtX = np.linalg.det(XtX)
+        if abs(detXtX) > cls._epsilon:
+            XtX_inv = np.linalg.inv(XtX)
+        else:
+            try:
+                XtX_inv = np.linalg.pinv(XtX)
+            except:
+                # [tentative]
+                XtX_inv = np.zeros_like(XtX)
+        beta_hat = XtX_inv @ XtY
+        return beta_hat
+
 
 class DEMOLeastSquareMethod:
     def __init__(self) -> None:
@@ -406,16 +487,31 @@ class DEMOLeastSquareMethod:
         ys = [0.0000, 0.0000, 0.0000, 0.1659, 0.0000, 0.0000, 0.0000, 0.2693, 0.000]
         basis = BasisType.Geometric
         order_basis = 3
-        avec0 = NPLeastSquare.SolveXinvY(basis, order_basis, np.array(xs), np.array(ys))
-        ycnd_expected = [NPLeastSquare.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
+        avec0 = NPLeastSquareSimple.SolveXinvY(basis, order_basis, np.array(xs), np.array(ys))
+        ycnd_expected = [NPLeastSquareSimple.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
         for i, yc in enumerate(ycnd_expected):
             print(i, round(yc,6), xs[i], ys[i])
-        sys.exit()
+
+    @classmethod
+    def quadratic_model_in_two_variables(cls):
+        ts = [200.0, 250.0, 200.0, 250.0, 189.65, 260.35, 225.0, 225.0, 225.0, 225.0, 225.0, 225.0]
+        cs = [15.0, 15.0, 25.0, 25.0, 20.0, 20.0, 12.93, 27.07, 20.0, 20.0, 20.0, 20.0]
+        ys = [43.0, 78.0, 69.0, 73.0, 48.0, 76.0, 65.0, 74.0, 76.0, 79.0, 83.0, 81.0]
+        x1s = [(t - 225.0)/25.0 for t in ts]
+        x2s = [(c - 20.0)/5.0 for c in cs]
+        design_matrix = NPLeastSquareSimple.design_matrix_quadratic_model_2vars(x1s, x2s)
+        # design_matrix = NPLeastSquareSimple.design_matrix_cubic_model_2vars(x1s, x2s)
+        beta_coeffs = NPLeastSquareSimple.beta_coefficients(design_matrix, np.array(ys))
+        for i, xr in enumerate(design_matrix):
+            yhat = np.dot(beta_coeffs, xr)
+            diff = yhat - ys[i]
+            assert abs(diff) < 3.76, 'abs(diff) < 3.76 is required'
+            print(f'{i}, {yhat:.4f}, {ys[i]:.4f}, {diff:.4f}')
 
 
 if __name__ == '__main__':
     msg = '# Least Square Method'
     print(msg)
     # DEMOLeastSquareMethod.basis_polynomials()
-    DEMOLeastSquareMethod.least_square_method()
-
+    # DEMOLeastSquareMethod.least_square_method()
+    DEMOLeastSquareMethod.quadratic_model_in_two_variables()

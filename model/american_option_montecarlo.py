@@ -9,8 +9,8 @@ import numpy as np
 import warnings
 # with warnings.catch_warnings():
 warnings.filterwarnings('ignore', category=Warning)
-from hepco.model.american_option_quadratic import price_european
-from hepco.model.least_square_method import BasisType, NPLeastSquare
+from hep.model.american_option_quadratic import price_european
+from hep.model.least_square_method import BasisType, NPLeastSquareSimple
 
 sys.dont_write_bytecode = True # dont make .pyc files
 
@@ -190,9 +190,9 @@ class OptionAmericanMonteCarlo(CashflowPayoff):
                 print(f'# [warn]: {it_curr}, len(xs) < order_basis')
                 avec0 = np.array([[0.0] for _ in range(order_basis)])
             else:
-                avec0 = NPLeastSquare.SolveXinvY(basis, order_basis, np.array(xs), np.array(ys))
+                avec0 = NPLeastSquareSimple.SolveXinvY(basis, order_basis, np.array(xs), np.array(ys))
             self._all_regcoeffs[it_curr] = avec0
-            ycnd_expected = [NPLeastSquare.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
+            ycnd_expected = [NPLeastSquareSimple.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
             assert len(itm_cashflows) == len(ycnd_expected), f'{len(itm_cashflows)} == {len(ycnd_expected)} is required'
             exercise_judge = {itm: itm_cashflows[itm] > ycnd_expected[k] for k, itm in enumerate(itm_cashflows)}
             exercise_paths = [itm for itm in exercise_judge if exercise_judge[itm]]
@@ -221,7 +221,7 @@ class OptionAmericanMonteCarlo(CashflowPayoff):
             xs = [spot_paths_curr[itm] for itm in itm_cashflows]
             avec0 = self._all_regcoeffs[it_curr]
             assert len(avec0) == order_basis, 'len(regcoeffs[it_curr]) == order_basis is required'
-            ycnd_expected = [NPLeastSquare.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
+            ycnd_expected = [NPLeastSquareSimple.y_conditional_expectation(basis, order_basis, avec0, x) for x in xs]
             assert len(itm_cashflows) == len(ycnd_expected), f'{len(itm_cashflows)} == {len(ycnd_expected)} is required'
             exercise_judge = {itm: itm_cashflows[itm] > ycnd_expected[k] for k, itm in enumerate(itm_cashflows)}
             exercise_paths = [itm for itm in exercise_judge if exercise_judge[itm]]
@@ -351,9 +351,10 @@ if __name__ == '__main__':
     mc_seed_paths = {
         # 'tsteps1Y': (5), # sample test
         # 'backward': (1932, 10), # sample test
+        # 'foreward': (1932, 10), # sample test
         'tsteps1Y': (2**6),
-        'backward': (1932, 2**11), # org
-        'foreward': (7397, 2**16),
+        'backward': (1932, 2**11), # org^11
+        'foreward': (7397, 2**16), # org^16
     }
     params_monte = (is_antitheticMC, mc_seed_paths)
     DEMOAmericanOptionMonteCarlo.pricing_american_sample(is_call, 1, basis, order_basis, params_monte)
