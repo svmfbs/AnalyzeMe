@@ -27,7 +27,7 @@ class GeometricAsianOption:
     def __init__(self, S0: float, r: float, q: float, vol: float, tm: float, n: int) -> None:
         self.reset_parameters(S0, r, q, vol, tm, n)
 
-    def __set_vol2_hstep(self) -> None:
+    def _set_vol2_hstep(self) -> None:
         self.vol2 = self.vol*self.vol
         self.h = self.tm / self.n
 
@@ -39,7 +39,7 @@ class GeometricAsianOption:
         self.vol = vol
         self.tm = tm
         self.n = n
-        self.__set_vol2_hstep()
+        self._set_vol2_hstep()
 
     def mean_log_geometric_average(self) -> float:
         """ calculate E[ln(G)]:  G = (\Pi_1^n S_ti)^(1/n)
@@ -71,8 +71,8 @@ class GeometricAsianOption:
         mean_geo = exp(mean_lnGeo + var_lnGeo / 2.0)
         return mean_geo
 
-    def _d1_generic(self, mean_ln: float, K: float, var_ln: float) -> float:
-        return (mean_ln - log(K) + var_ln) / sqrt(var_ln)
+    def _d1_generic(self, mean_ln: float, K: float, var_ln_up: float, var_ln_dn: float) -> float:
+        return (mean_ln - log(K) + var_ln_up) / sqrt(var_ln_dn)
 
     def _d2_generic(self, d1: float, var_ln) -> float:
         return d1 - sqrt(var_ln)
@@ -82,7 +82,7 @@ class GeometricAsianOption:
         """
         mean_lnGeo = self.mean_log_geometric_average()
         var_lnGeo = self.variance_log_geometric_average()
-        d1 = self._d1_generic(mean_lnGeo, K, var_lnGeo)
+        d1 = self._d1_generic(mean_lnGeo, K, var_lnGeo, var_lnGeo)
         return d1
 
     def d2_geometric(self, K: float) -> float:
@@ -124,7 +124,7 @@ class ArithmeticAsianOption(GeometricAsianOption):
         Kmod = K - (mean_arith - mean_geo)
         mean_lnGeo = self.mean_log_geometric_average()
         var_lnGeo = self.variance_log_geometric_average()
-        d1mod = self._d1_generic(mean_lnGeo, Kmod, var_lnGeo)
+        d1mod = self._d1_generic(mean_lnGeo, Kmod, var_lnGeo, var_lnGeo)
         d2mod = self._d2_generic(d1mod, var_lnGeo)
         price_mod_geo_call = df*(mean_geo*norm.cdf(d1mod) - Kmod*norm.cdf(d2mod))
         return price_mod_geo_call
